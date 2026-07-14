@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Diagnósticos de Máquinas</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<!-- ============================== HEADER ============================== -->
+<header class="app-header">
+  <div class="app-header__left">
+    <button class="icon-btn" id="btn-open-sidebar" aria-label="Abrir menú">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="app-header__title">
+      Diagnósticos de Máquinas - DEV (adurem)
+      <small>Planta · Laboratorio Valenzuela</small>
+    </div>
+  </div>
+  <div class="theme-switch">
+    <div class="theme-switch__track" id="theme-toggle" role="switch" aria-checked="false" aria-label="Modo oscuro">
+      <div class="theme-switch__thumb">
+        <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================== SIDEBAR ============================== -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar__header">
+    <span class="sidebar__title">Menú</span>
+    <button class="icon-btn" id="btn-close-sidebar" aria-label="Cerrar menú">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="sidebar__body">
+    <button class="sidebar-item" id="menu-nuevo-diagnostico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Nuevo diagnóstico
+    </button>
+    <button class="sidebar-item" id="menu-registro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>
+      Registro de diagnósticos
+    </button>
+
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section-label">Administración</div>
+
+    <button class="sidebar-item" id="menu-admin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span id="menu-admin-label">Acceso administrador</span>
+    </button>
+    <button class="sidebar-item is-hidden" id="menu-aprobaciones">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      Aprobar traslados
+    </button>
+    <button class="sidebar-item is-hidden" id="menu-logout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Cerrar sesión admin
+    </button>
+  </div>
+</aside>
+
+<!-- ============================== MAIN ============================== -->
+<main class="app-main">
+
+  <!-- Vista: Formulario de diagnóstico -->
+  <section id="view-form">
+    <div class="status-banner" id="status-banner">
+      <div class="status-banner__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="status-banner__text" id="status-banner-text">Cargando estado de traslados pendientes…</div>
+    </div>
+
+    <form id="diagnostico-form" class="form-card" novalidate>
+
+      <!-- Sección: Diagnóstico -->
+      <div class="form-section">
+        <p class="form-section__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Diagnóstico
+        </p>
+        <div class="field-grid field-grid--single">
+          <div class="field field--required" data-field="DIAGNOSTICO">
+            <label class="field__label" for="f-diagnostico"><span class="field__required-dot"></span>Diagnóstico</label>
+            <select id="f-diagnostico" required></select>
+            <span class="field__error"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sección: Ubicación -->
+      <div class="form-section">
+        <p class="form-section__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Ubicación
+        </p>
+        <div class="field-grid">
+          <div class="field field--required" data-field="PLATAFORMA">
+            <label class="field__label" for="f-plataforma"><span class="field__required-dot"></span>Plataforma</label>
+            <select id="f-plataforma" required></select>
+            <span class="field__error"></span>
+          </div>
+          <div class="field field--required" data-field="CONTENEDOR">
+            <label class="field__label" for="f-contenedor"><span class="field__required-dot"></span>Contenedor</label>
+            <select id="f-contenedor" required disabled>
+              <option value="">Elegí una plataforma primero</option>
+            </select>
+            <span class="field__error"></span>
+          </div>
+          <div class="field field--required" data-field="RACK">
+            <label class="field__label" for="f-rack"><span class="field__required-dot"></span>Rack</label>
+            <select id="f-rack" required></select>
+            <span class="field__error"></span>
+          </div>
+          <div></div>
+          <div class="field field--required" data-field="FILA">
+            <label class="field__label" for="f-fila"><span class="field__required-dot"></span>Fila</label>
+            <input type="number" id="f-fila" min="1" max="15" placeholder="1 a 15" required>
+            <span class="field__error"></span>
+          </div>
+          <div class="field field--required" data-field="COLUMNA">
+            <label class="field__label" for="f-columna"><span class="field__required-dot"></span>Columna</label>
+            <input type="number" id="f-columna" min="1" max="15" placeholder="1 a 15" required>
+            <span class="field__error"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sección: Identificación del equipo -->
+      <div class="form-section">
+        <p class="form-section__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Identificación del equipo
+        </p>
+        <div class="field-grid">
+          <div class="field" data-field="IP">
+            <label class="field__label" for="f-ip"><span class="field__required-dot"></span>IP</label>
+            <input type="text" id="f-ip" class="mono-input" placeholder="10.160.XX.XX" autocomplete="off">
+            <span class="field__hint">Formato 10.160.N.M — N entre 1 y 110</span>
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="MAC">
+            <label class="field__label" for="f-mac"><span class="field__required-dot"></span>MAC</label>
+            <input type="text" id="f-mac" class="mono-input" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="SN_DIGITAL">
+            <label class="field__label" for="f-sn-digital"><span class="field__required-dot"></span>SN Digital</label>
+            <input type="text" id="f-sn-digital" class="mono-input" maxlength="17" placeholder="17 caracteres, 7° = U" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="SN_FISICA">
+            <label class="field__label" for="f-sn-fisica"><span class="field__required-dot"></span>SN Física</label>
+            <input type="text" id="f-sn-fisica" class="mono-input" maxlength="17" placeholder="17 caracteres, 7° = B/C/D" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="MODELO">
+            <label class="field__label" for="f-modelo"><span class="field__required-dot"></span>Modelo</label>
+            <select id="f-modelo">
+              <option value="">Seleccionar…</option>
+            </select>
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="TIPO_PIEZA">
+            <label class="field__label" for="f-tipo-pieza"><span class="field__required-dot"></span>Tipo de pieza</label>
+            <select id="f-tipo-pieza"></select>
+            <span class="field__error"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sección: PSU / Chains -->
+      <div class="form-section">
+        <p class="form-section__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          PSU y Chains
+        </p>
+        <div class="field-grid">
+          <div class="field" data-field="PSU_SN">
+            <label class="field__label" for="f-psu-sn"><span class="field__required-dot"></span>PSU SN</label>
+            <input type="text" id="f-psu-sn" class="mono-input" maxlength="17" placeholder="17 caracteres, 7° = 0/1" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div></div>
+          <div class="field" data-field="CHAIN_0">
+            <label class="field__label" for="f-chain-0"><span class="field__required-dot"></span>Chain 0</label>
+            <input type="text" id="f-chain-0" class="mono-input" maxlength="17" placeholder="17 caracteres, 7° = J/1" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="CHAIN_1">
+            <label class="field__label" for="f-chain-1"><span class="field__required-dot"></span>Chain 1</label>
+            <input type="text" id="f-chain-1" class="mono-input" maxlength="17" placeholder="17 caracteres, 7° = J/1" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="CHAIN_2">
+            <label class="field__label" for="f-chain-2"><span class="field__required-dot"></span>Chain 2</label>
+            <input type="text" id="f-chain-2" class="mono-input" maxlength="17" placeholder="17 caracteres, 7° = J/1" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field" data-field="FUGA">
+            <label class="field__label" for="f-fuga"><span class="field__required-dot"></span>Fuga</label>
+            <select id="f-fuga"></select>
+            <span class="field__error"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sección: Cierre -->
+      <div class="form-section">
+        <p class="form-section__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Cierre del diagnóstico
+        </p>
+        <div class="field-grid">
+          <div class="field field--required" data-field="ESTADO">
+            <label class="field__label" for="f-estado"><span class="field__required-dot"></span>Estado</label>
+            <select id="f-estado" required></select>
+            <span class="field__error"></span>
+          </div>
+          <div class="field field--required" data-field="SUPERVISOR">
+            <label class="field__label" for="f-supervisor"><span class="field__required-dot"></span>Supervisor</label>
+            <select id="f-supervisor" required></select>
+            <span class="field__error"></span>
+          </div>
+          <div class="field field--required field-grid--single" data-field="OBSERVACION" style="grid-column: 1 / -1;">
+            <label class="field__label" for="f-observacion"><span class="field__required-dot"></span>Observación</label>
+            <textarea id="f-observacion" placeholder="Detalles adicionales del diagnóstico…"></textarea>
+            <span class="field__error"></span>
+          </div>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- Vista: Registro de diagnósticos -->
+  <section id="view-registro" class="is-hidden">
+    <div class="toolbar">
+      <select id="registro-filtro-estado">
+        <option value="todos">Todos los estados</option>
+        <option value="pendientes">Solo pendientes</option>
+        <option value="aprobados">Solo aprobados</option>
+        <option value="anulados">Solo anulados</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" id="btn-refrescar-registro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Actualizar
+      </button>
+    </div>
+    <div class="record-list" id="registro-lista">
+      <div class="skeleton-line" style="height:70px; border-radius:12px;"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================== STICKY ACTION BAR ============================== -->
+<div class="sticky-action-bar" id="sticky-bar-form">
+  <div class="sticky-action-bar__inner">
+    <button type="button" class="btn btn-primary btn-block" id="btn-confirmar-diagnostico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Confirmar diagnóstico realizado
+    </button>
+  </div>
+</div>
+
+<!-- ============================== MODAL: Login admin ============================== -->
+<div class="modal-overlay" id="modal-login">
+  <div class="modal">
+    <div class="modal__header">
+      <div>
+        <div class="modal__title">Acceso de administrador</div>
+        <div class="modal__subtitle">Solo personal del laboratorio</div>
+      </div>
+      <button class="icon-btn" data-close-modal="modal-login">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal__body">
+      <div class="field-grid field-grid--single">
+        <div class="field">
+          <label class="field__label" for="login-usuario">Usuario</label>
+          <input type="text" id="login-usuario" autocomplete="username">
+        </div>
+        <div class="field">
+          <label class="field__label" for="login-password">Contraseña</label>
+          <input type="password" id="login-password" autocomplete="current-password">
+        </div>
+        <p id="login-error" class="field__error" style="display:none;"></p>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary" data-close-modal="modal-login">Cancelar</button>
+      <button class="btn btn-primary" id="btn-login-submit">Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== MODAL: Errores de validación ============================== -->
+<div class="modal-overlay" id="modal-errores">
+  <div class="modal">
+    <div class="modal__header">
+      <div>
+        <div class="modal-icon-badge modal-icon-badge--danger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="modal__title">Revisá estos datos</div>
+        <div class="modal__subtitle">Hay campos que no cumplen con el formato requerido</div>
+      </div>
+      <button class="icon-btn" data-close-modal="modal-errores">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal__body">
+      <ul class="error-list" id="lista-errores"></ul>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-primary" data-close-modal="modal-errores">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== MODAL: Confirmación de éxito ============================== -->
+<div class="modal-overlay" id="modal-exito">
+  <div class="modal">
+    <div class="modal__header">
+      <div>
+        <div class="modal-icon-badge modal-icon-badge--success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="modal__title">Diagnóstico registrado</div>
+        <div class="modal__subtitle" id="modal-exito-subtitulo">La solicitud de traslado quedó pendiente de aprobación</div>
+      </div>
+    </div>
+    <div class="modal__body">
+      <p style="margin:0; font-size:13.5px; color:var(--text-muted);">ID asignado:</p>
+      <p class="record-card__id" style="font-size:16px; margin-top:4px;" id="modal-exito-id">—</p>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-primary btn-block" id="btn-exito-cerrar">Cargar otro diagnóstico</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== MODAL: Anular diagnóstico ============================== -->
+<div class="modal-overlay" id="modal-anular">
+  <div class="modal">
+    <div class="modal__header">
+      <div>
+        <div class="modal__title">Anular registro</div>
+        <div class="modal__subtitle" id="modal-anular-id">—</div>
+      </div>
+      <button class="icon-btn" data-close-modal="modal-anular">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal__body">
+      <div class="field">
+        <label class="field__label" for="anular-motivo">Motivo (opcional)</label>
+        <textarea id="anular-motivo" placeholder="¿Por qué se anula este registro?"></textarea>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary" data-close-modal="modal-anular">Cancelar</button>
+      <button class="btn btn-danger" id="btn-anular-confirmar">Anular registro</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>
