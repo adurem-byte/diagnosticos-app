@@ -634,7 +634,7 @@ function renderizarRegistro(filas) {
       "<div>Fila/Col: <b>" + (fila.FILA || "—") + " / " + (fila.COLUMNA || "—") + "</b></div>" +
       "<div>SN Física: <b class=\"mono-input\" style=\"font-size:12px;\">" + (fila.SN_FISICA || "—") + "</b></div>" +
       "<div>MAC: <b class=\"mono-input\" style=\"font-size:12px;\">" + (fila.MAC || "—") + "</b></div>" +
-      "<div>Supervisor: <b>" + (fila.SUPERVISOR || "—") + "</b></div>" +
+      "<div>Diagnosticador: <b>" + (fila.SUPERVISOR || "—") + "</b></div>" +
       "<div>Fecha: <b>" + (fila.FECHA_HORA || "—") + "</b></div>" +
       "</div>" +
       (esAdmin

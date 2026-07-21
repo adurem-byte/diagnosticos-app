@@ -21,7 +21,7 @@ TIPOS_PIEZA = [
 # Debe coincidir con el 7° carácter de SN_FISICA: B->338T, C->358T, D->395T.
 MODELO_OPCIONES = ["338T", "358T", "395T"]
 
-FUGA_OPCIONES = ["INTERNO", "MANGUERITA"]
+FUGA_OPCIONES = ["INTERNO", "MANGUERITA", "CONJ. DE DIST."]
 
 ESTADO_OPCIONES = ["Desconectado", "Desconectado y log descargado"]
 
