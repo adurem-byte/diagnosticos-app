@@ -44,6 +44,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "clave-temporal-cambiar")
 SHEET_DIAGNOSTICOS = "Diagnosticos"
 SHEET_ADMINISTRADORES = "Administradores"
 SHEET_HISTORIAL_REPARACIONES = "Historial_Reparaciones"
+SHEET_WARRANTY_BD = "Warranty_BD"
 
 if not SPREADSHEET_ID:
     raise RuntimeError(

@@ -58,6 +58,10 @@ def _hoja_historial_reparaciones():
     return _conectar().worksheet(config.SHEET_HISTORIAL_REPARACIONES)
 
 
+def _hoja_warranty_bd():
+    return _conectar().worksheet(config.SHEET_WARRANTY_BD)
+
+
 # Encabezados exactos esperados en la pestaña "Diagnosticos"
 COLUMNAS_DIAGNOSTICOS = [
     "ID", "FECHA_HORA", "PLATAFORMA", "CONTENEDOR", "RACK", "FILA", "COLUMNA",
@@ -160,6 +164,7 @@ def listar_diagnosticos(solo_pendientes: bool = False) -> list:
         historial = obtener_historial_por_sn(sn_fisica)
         fila["FECHA_PIEZAS_CAMBIADAS"] = historial["FECHA_PIEZAS_CAMBIADAS"]
         fila["FECHA_REPARACION"] = historial["FECHA_REPARACION"]
+        fila["FECHA_VENCIMIENTO_GARANTIA"] = obtener_garantia_por_sn(sn_fisica)
 
     return filas
 
@@ -319,3 +324,64 @@ def obtener_historial_por_sn(sn_fisica: str) -> dict:
         return vacio
     mapa = _leer_historial_reparaciones()
     return mapa.get(sn_fisica.strip().upper(), vacio)
+
+
+# ---------------------------------------------------------------------------
+# Vencimiento de garantía
+#
+# La hoja "Warranty_BD" vive dentro de la misma planilla, con columna A =
+# SN física y columna B = fecha de expiración de garantía, con encabezado
+# en la fila 1. Leemos por posición de columna (no por nombre de encabezado,
+# ya que el texto exacto del encabezado no está estandarizado) y cacheamos
+# igual que el historial de reparaciones para no golpear la API en cada
+# consulta del Registro.
+# ---------------------------------------------------------------------------
+_CACHE_WARRANTY_SEGUNDOS = 120
+_cache_warranty = {"datos": None, "leido_en": 0.0}
+_cache_warranty_lock = threading.Lock()
+
+
+def _leer_warranty_bd() -> dict:
+    """
+    Devuelve un diccionario {SN_FISICA: fecha_vencimiento_str} a partir de
+    la hoja Warranty_BD (columna A = SN, columna B = fecha), usando un
+    caché en memoria de _CACHE_WARRANTY_SEGUNDOS.
+    """
+    import time
+
+    with _cache_warranty_lock:
+        ahora = time.time()
+        si_cache_vigente = (
+            _cache_warranty["datos"] is not None
+            and (ahora - _cache_warranty["leido_en"]) < _CACHE_WARRANTY_SEGUNDOS
+        )
+        if si_cache_vigente:
+            return _cache_warranty["datos"]
+
+        hoja = _hoja_warranty_bd()
+        valores = hoja.get_all_values()
+        mapa = {}
+        for fila in valores[1:]:  # saltamos el encabezado
+            if len(fila) < 2:
+                continue
+            sn = fila[0].strip().upper()
+            fecha = fila[1].strip()
+            if not sn or not fecha:
+                continue
+            mapa[sn] = fecha
+
+        _cache_warranty["datos"] = mapa
+        _cache_warranty["leido_en"] = ahora
+        return mapa
+
+
+def obtener_garantia_por_sn(sn_fisica: str) -> Optional[str]:
+    """
+    Busca la SN física (exacta, sin espacios, sin distinguir mayúsculas)
+    en Warranty_BD. Devuelve la fecha de vencimiento como texto, o None
+    si la SN no tiene garantía registrada.
+    """
+    if not sn_fisica:
+        return None
+    mapa = _leer_warranty_bd()
+    return mapa.get(sn_fisica.strip().upper())

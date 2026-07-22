@@ -621,6 +621,7 @@ function renderizarRegistro(filas) {
     const puedeAprobar = esAdmin && String(fila.APROBADO).toUpperCase() !== "SI" && String(fila.ANULADO).toUpperCase() !== "SI";
     const fechaPiezas = fila.FECHA_PIEZAS_CAMBIADAS || null;
     const fechaReparacion = fila.FECHA_REPARACION || null;
+    const fechaGarantia = fila.FECHA_VENCIMIENTO_GARANTIA || null;
     const tieneAntecedentes = !!(fechaPiezas || fechaReparacion);
 
     return (
@@ -647,6 +648,7 @@ function renderizarRegistro(filas) {
           '<div class="repair-history__lines">' +
           "<div>Últ. pieza cambiada: <b>" + (fechaPiezas || "Sin datos") + "</b></div>" +
           "<div>Últ. reparación: <b>" + (fechaReparacion || "Sin datos") + "</b></div>" +
+          "<div>Vencimiento de garantía: <b>" + (fechaGarantia || "Sin datos") + "</b></div>" +
           "</div>" +
           "</div>")
         : "") +
