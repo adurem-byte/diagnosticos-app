@@ -10,7 +10,9 @@
  */
 
 // ---------------------------------------------------------------------------
-// Estado global simple de la app (en memoria, sin localStorage)
+// Estado global simple de la app en memoria. adminToken/adminNombre se
+// restauran desde localStorage al cargar la página (ver restaurarSesion()
+// en admin.js) para que la sesión de admin sobreviva a un refresh.
 // ---------------------------------------------------------------------------
 const STATE = {
   catalogos: null,
@@ -244,6 +246,10 @@ async function inicializarCatalogos() {
   llenarSelect(elementoDe("FUGA"), catalogos.fuga_opciones, "Seleccionar…");
   llenarSelect(elementoDe("ESTADO"), catalogos.estado_opciones, "Seleccionar…");
   llenarSelect(elementoDe("SUPERVISOR"), catalogos.supervisores, "Seleccionar…");
+
+  llenarSelect(document.getElementById("registro-filtro-diagnostico"), catalogos.diagnosticos, "Todas las fallas");
+  llenarSelect(document.getElementById("registro-filtro-plataforma"), catalogos.plataformas, "Todas las plataformas");
+  llenarSelect(document.getElementById("registro-filtro-supervisor"), catalogos.supervisores, "Todos los diagnosticadores");
 }
 
 elementoDe("PLATAFORMA").addEventListener("change", async function (e) {
@@ -684,6 +690,28 @@ async function cargarRegistro() {
     } else if (filtro === "anulados") {
       filtrados = filtrados.filter(function (f) { return String(f.ANULADO).toUpperCase() === "SI"; });
     }
+
+    const filtroDiagnostico = document.getElementById("registro-filtro-diagnostico").value;
+    const filtroPlataforma = document.getElementById("registro-filtro-plataforma").value;
+    const filtroSupervisor = document.getElementById("registro-filtro-supervisor").value;
+    const busqueda = document.getElementById("registro-busqueda").value.trim().toUpperCase();
+
+    if (filtroDiagnostico) {
+      filtrados = filtrados.filter(function (f) { return f.DIAGNOSTICO === filtroDiagnostico; });
+    }
+    if (filtroPlataforma) {
+      filtrados = filtrados.filter(function (f) { return f.PLATAFORMA === filtroPlataforma; });
+    }
+    if (filtroSupervisor) {
+      filtrados = filtrados.filter(function (f) { return f.SUPERVISOR === filtroSupervisor; });
+    }
+    if (busqueda) {
+      filtrados = filtrados.filter(function (f) {
+        return (f.SN_FISICA || "").toUpperCase().includes(busqueda) ||
+          (f.MAC || "").toUpperCase().includes(busqueda);
+      });
+    }
+
     filtrados = filtrados.slice().reverse();
     renderizarRegistro(filtrados);
   } catch (err) {
@@ -692,6 +720,10 @@ async function cargarRegistro() {
 }
 
 document.getElementById("registro-filtro-estado").addEventListener("change", cargarRegistro);
+document.getElementById("registro-filtro-diagnostico").addEventListener("change", cargarRegistro);
+document.getElementById("registro-filtro-plataforma").addEventListener("change", cargarRegistro);
+document.getElementById("registro-filtro-supervisor").addEventListener("change", cargarRegistro);
+document.getElementById("registro-busqueda").addEventListener("input", cargarRegistro);
 document.getElementById("btn-refrescar-registro").addEventListener("click", cargarRegistro);
 
 async function aprobarDesdeRegistro(id) {

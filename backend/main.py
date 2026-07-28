@@ -193,6 +193,12 @@ def admin_logout(datos: dict):
     return {"ok": True}
 
 
+@app.post("/api/admin/verificar")
+def admin_verificar(datos: dict):
+    nombre = _requerir_admin(datos.get("token", ""))
+    return {"nombre": nombre}
+
+
 @app.post("/api/admin/aprobar")
 def aprobar(datos: models.AprobarInput):
     nombre_admin = _requerir_admin(datos.token)

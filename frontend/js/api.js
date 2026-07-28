@@ -72,6 +72,13 @@ const API = (() => {
       });
     },
 
+    adminVerificar(token) {
+      return _request("/api/admin/verificar", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
+    },
+
     adminAprobar(token, diagnosticoId) {
       return _request("/api/admin/aprobar", {
         method: "POST",

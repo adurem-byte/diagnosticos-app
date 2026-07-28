@@ -3,9 +3,10 @@
  * Login de administrador y control de qué opciones del menú lateral
  * se muestran según haya o no una sesión de admin activa.
  *
- * El token vive solo en memoria (STATE.adminToken, definido en app.js).
- * Si se recarga la página, hay que volver a iniciar sesión — esto es
- * intencional para una herramienta de planta de uso compartido.
+ * El token se guarda en localStorage además de en memoria (STATE.adminToken,
+ * definido en app.js), para que la sesión sobreviva a un refresh o a cerrar
+ * el navegador. Al cargar la página se intenta restaurar y revalidar contra
+ * el backend (ver restaurarSesion() al final de este archivo).
  */
 
 function actualizarMenuAdmin() {
@@ -56,6 +57,7 @@ async function intentarLogin() {
     const respuesta = await API.adminLogin(usuario, password);
     STATE.adminToken = respuesta.token;
     STATE.adminNombre = respuesta.nombre;
+    localStorage.setItem("adminToken", respuesta.token);
     actualizarMenuAdmin();
     cerrarModal("modal-login");
     mostrarToast("Sesión iniciada como " + respuesta.nombre + ".");
@@ -91,6 +93,7 @@ document.getElementById("menu-logout").addEventListener("click", async function 
   }
   STATE.adminToken = null;
   STATE.adminNombre = null;
+  localStorage.removeItem("adminToken");
   actualizarMenuAdmin();
   cerrarSidebar();
   mostrarToast("Sesión de administrador cerrada.");
@@ -99,5 +102,19 @@ document.getElementById("menu-logout").addEventListener("click", async function 
   }
 });
 
-// Estado inicial del menú (sin sesión)
-actualizarMenuAdmin();
+// Al cargar la página, intentamos restaurar la sesión guardada en
+// localStorage (si hay) revalidándola contra el backend, y recién ahí
+// fijamos el estado inicial del menú.
+(async function restaurarSesion() {
+  const tokenGuardado = localStorage.getItem("adminToken");
+  if (tokenGuardado) {
+    try {
+      const respuesta = await API.adminVerificar(tokenGuardado);
+      STATE.adminToken = tokenGuardado;
+      STATE.adminNombre = respuesta.nombre;
+    } catch (err) {
+      localStorage.removeItem("adminToken"); // token vencido o inválido
+    }
+  }
+  actualizarMenuAdmin();
+})();
