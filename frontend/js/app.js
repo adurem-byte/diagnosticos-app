@@ -20,6 +20,11 @@ const STATE = {
   reglasActuales: null,
   adminToken: null,
   adminNombre: null,
+  // Última tanda de filas traída por el Registro, para poder precargar el
+  // formulario al editar sin volver a pedirlas al backend.
+  filasRegistro: [],
+  // ID del diagnóstico que se está corrigiendo, o null si es una carga nueva.
+  editandoId: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -442,6 +447,10 @@ function recolectarDatosFormulario() {
   return datos;
 }
 
+// Estructura original del botón (ícono + span de texto), para poder
+// reponerla después de mostrar el spinner de "Guardando…".
+const HTML_BOTON_CONFIRMAR = document.getElementById("btn-confirmar-diagnostico").innerHTML;
+
 function validarFormularioCompleto() {
   if (!STATE.reglasActuales) {
     return ["Seleccioná un DIAGNÓSTICO antes de continuar."];
@@ -487,16 +496,25 @@ document.getElementById("btn-confirmar-diagnostico").addEventListener("click", a
   }
 
   const boton = document.getElementById("btn-confirmar-diagnostico");
-  const textoOriginal = boton.innerHTML;
   boton.disabled = true;
   boton.innerHTML = '<span class="spinner"></span> Guardando…';
 
   try {
     const datos = recolectarDatosFormulario();
-    const respuesta = await API.crearDiagnostico(datos);
-    document.getElementById("modal-exito-id").textContent = respuesta.id;
-    abrirModal("modal-exito");
-    await actualizarBannerPendientes();
+    if (STATE.editandoId) {
+      const idEditado = STATE.editandoId;
+      await API.adminEditar(STATE.adminToken, idEditado, datos);
+      salirModoEdicion();
+      mostrarToast("Diagnóstico " + idEditado + " actualizado.");
+      mostrarVista("registro");
+      await cargarRegistro();
+      await actualizarBannerPendientes();
+    } else {
+      const respuesta = await API.crearDiagnostico(datos);
+      document.getElementById("modal-exito-id").textContent = respuesta.id;
+      abrirModal("modal-exito");
+      await actualizarBannerPendientes();
+    }
   } catch (err) {
     if (err.status === 422 && err.detail && err.detail.errores) {
       const lista = document.getElementById("lista-errores");
@@ -507,19 +525,25 @@ document.getElementById("btn-confirmar-diagnostico").addEventListener("click", a
         lista.appendChild(li);
       });
       abrirModal("modal-errores");
+    } else if (err.status === 401) {
+      mostrarToast("Tu sesión de administrador expiró. Iniciá sesión nuevamente.", "error");
     } else {
       mostrarToast("Ocurrió un error al guardar el diagnóstico. Intentá nuevamente.", "error");
     }
   } finally {
     boton.disabled = false;
-    boton.innerHTML = textoOriginal;
+    // Reponemos la estructura original (ícono + span) y dejamos que
+    // actualizarModoEdicion ponga el texto que corresponde: el modo pudo
+    // haber cambiado durante el guardado.
+    boton.innerHTML = HTML_BOTON_CONFIRMAR;
+    actualizarModoEdicion();
   }
 });
 
-document.getElementById("btn-exito-cerrar").addEventListener("click", function () {
-  cerrarModal("modal-exito");
+function resetearFormulario() {
   document.getElementById("diagnostico-form").reset();
   CAMPOS.forEach(function (campo) {
+    limpiarError(campo);
     if (campo === "DIAGNOSTICO") return;
     const wrapper = wrapperDe(campo);
     if (wrapper) wrapper.classList.add("is-hidden");
@@ -528,6 +552,11 @@ document.getElementById("btn-exito-cerrar").addEventListener("click", function (
   elementoDe("CONTENEDOR").disabled = true;
   STATE.reglasActuales = null;
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.getElementById("btn-exito-cerrar").addEventListener("click", function () {
+  cerrarModal("modal-exito");
+  resetearFormulario();
 });
 
 // ---------------------------------------------------------------------------
@@ -572,6 +601,8 @@ document.getElementById("btn-close-sidebar").addEventListener("click", cerrarSid
 sidebarOverlay.addEventListener("click", cerrarSidebar);
 
 document.getElementById("menu-nuevo-diagnostico").addEventListener("click", function () {
+  // Si venía de una corrección a medias, arrancar de cero y no pisar ese registro.
+  if (STATE.editandoId) salirModoEdicion();
   mostrarVista("form");
   cerrarSidebar();
 });
@@ -658,9 +689,10 @@ function renderizarRegistro(filas) {
           "</div>" +
           "</div>")
         : "") +
-      ((puedeAprobar || puedeAnular)
+      (esAdmin
         ? '<div class="record-card__actions">' +
           (puedeAprobar ? '<button class="btn btn-success btn-sm" data-aprobar="' + fila.ID + '">Aprobar traslado</button>' : "") +
+          '<button class="btn btn-secondary btn-sm" data-editar="' + fila.ID + '">Editar</button>' +
           (puedeAnular ? '<button class="btn btn-danger btn-sm" data-anular="' + fila.ID + '">Anular</button>' : "") +
           "</div>"
         : "") +
@@ -670,6 +702,9 @@ function renderizarRegistro(filas) {
 
   lista.querySelectorAll("[data-aprobar]").forEach(function (btn) {
     btn.addEventListener("click", function () { aprobarDesdeRegistro(btn.dataset.aprobar); });
+  });
+  lista.querySelectorAll("[data-editar]").forEach(function (btn) {
+    btn.addEventListener("click", function () { abrirEdicion(btn.dataset.editar); });
   });
   lista.querySelectorAll("[data-anular]").forEach(function (btn) {
     btn.addEventListener("click", function () { abrirModalAnular(btn.dataset.anular); });
@@ -682,6 +717,7 @@ async function cargarRegistro() {
   try {
     const filtro = document.getElementById("registro-filtro-estado").value;
     const respuesta = await API.listarDiagnosticos(false);
+    STATE.filasRegistro = respuesta.diagnosticos;
     let filtrados = respuesta.diagnosticos;
     if (filtro === "pendientes") {
       filtrados = filtrados.filter(function (f) { return String(f.APROBADO).toUpperCase() === "NO" && String(f.ANULADO).toUpperCase() !== "SI"; });
@@ -725,6 +761,114 @@ document.getElementById("registro-filtro-plataforma").addEventListener("change",
 document.getElementById("registro-filtro-supervisor").addEventListener("change", cargarRegistro);
 document.getElementById("registro-busqueda").addEventListener("input", cargarRegistro);
 document.getElementById("btn-refrescar-registro").addEventListener("click", cargarRegistro);
+
+// ---------------------------------------------------------------------------
+// Edición de un diagnóstico ya cargado (solo admin)
+//
+// Reutilizamos el mismo formulario de carga en lugar de duplicarlo: lo
+// precargamos con los valores existentes y guardamos el ID en
+// STATE.editandoId, que es lo que hace que el botón de confirmar actualice
+// en vez de crear. Así la corrección hereda todas las reglas por tipo de
+// diagnóstico y las validaciones de formato que ya tiene el formulario.
+// ---------------------------------------------------------------------------
+// Los registros viejos pueden tener valores que ya no figuran en el catálogo
+// actual (variantes de mayúsculas, redacciones anteriores, tipeos). Si la
+// opción no existe, la agregamos en lugar de dejar el select vacío: abrir un
+// registro para corregir un campo no debe borrar en silencio otro que el
+// admin nunca tocó.
+function asignarValorEnSelect(select, valor) {
+  const existe = Array.prototype.some.call(select.options, function (op) {
+    return op.value === valor;
+  });
+  if (!existe) {
+    const op = document.createElement("option");
+    op.value = valor;
+    op.textContent = valor;
+    select.appendChild(op);
+  }
+  select.value = valor;
+}
+
+function asignarValorCampo(campo, valor) {
+  const input = elementoDe(campo);
+  if (!input) return;
+  if (input.tagName === "SELECT" && valor) {
+    asignarValorEnSelect(input, valor);
+  } else {
+    input.value = valor;
+  }
+}
+
+function actualizarModoEdicion() {
+  const editando = !!STATE.editandoId;
+  document.getElementById("edicion-banner").classList.toggle("is-hidden", !editando);
+  document.getElementById("btn-cancelar-edicion").classList.toggle("is-hidden", !editando);
+  // El span no existe mientras el botón muestra el spinner de "Guardando…";
+  // en ese caso el texto lo repone el finally del guardado.
+  const textoBoton = document.getElementById("btn-confirmar-texto");
+  if (textoBoton) {
+    textoBoton.textContent = editando ? "Guardar cambios" : "Confirmar diagnóstico realizado";
+  }
+  if (editando) {
+    document.getElementById("edicion-banner-id").textContent = STATE.editandoId;
+  }
+}
+
+function salirModoEdicion() {
+  STATE.editandoId = null;
+  actualizarModoEdicion();
+  resetearFormulario();
+}
+
+async function abrirEdicion(id) {
+  const fila = STATE.filasRegistro.find(function (f) { return f.ID === id; });
+  if (!fila) {
+    mostrarToast("No se encontró el diagnóstico a editar. Actualizá el registro.", "error");
+    return;
+  }
+
+  // 1) El diagnóstico primero: define qué campos se muestran y limpia los
+  //    que no aplican, así que tiene que resolverse antes de cargar valores.
+  asignarValorCampo("DIAGNOSTICO", fila.DIAGNOSTICO || "");
+  try {
+    aplicarReglasAlFormulario(await obtenerReglas(fila.DIAGNOSTICO));
+  } catch (err) {
+    mostrarToast("No se pudieron cargar las reglas del diagnóstico.", "error");
+    return;
+  }
+
+  // 2) El select de contenedores depende de la plataforma elegida.
+  asignarValorCampo("PLATAFORMA", fila.PLATAFORMA || "");
+  if (fila.PLATAFORMA) {
+    const selectContenedor = elementoDe("CONTENEDOR");
+    try {
+      const respuesta = await API.obtenerContenedores(fila.PLATAFORMA);
+      llenarSelect(selectContenedor, respuesta.contenedores, "Seleccionar…");
+      selectContenedor.disabled = false;
+    } catch (err) {
+      mostrarToast("No se pudieron cargar los contenedores.", "error");
+    }
+  }
+
+  // 3) Recién ahora el resto, con todos los selects ya poblados.
+  CAMPOS.forEach(function (campo) {
+    if (campo === "DIAGNOSTICO" || campo === "PLATAFORMA") return;
+    asignarValorCampo(campo, fila[campo] || "");
+  });
+
+  // El rack define el rango válido de Fila; su handler ya se encarga.
+  elementoDe("RACK").dispatchEvent(new Event("change"));
+  CAMPOS.forEach(function (campo) { limpiarError(campo); });
+
+  STATE.editandoId = id;
+  actualizarModoEdicion();
+  mostrarVista("form");
+}
+
+document.getElementById("btn-cancelar-edicion").addEventListener("click", function () {
+  salirModoEdicion();
+  mostrarVista("registro");
+});
 
 async function aprobarDesdeRegistro(id) {
   if (!STATE.adminToken) return;

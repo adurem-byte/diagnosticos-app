@@ -94,3 +94,10 @@ class AnularInput(BaseModel):
     token: str
     diagnostico_id: str
     motivo: Optional[str] = None
+
+
+class EditarInput(BaseModel):
+    """Corrección de un diagnóstico ya registrado, hecha por un admin."""
+    token: str
+    diagnostico_id: str
+    datos: DiagnosticoInput

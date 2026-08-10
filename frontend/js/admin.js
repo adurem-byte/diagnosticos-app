@@ -94,6 +94,8 @@ document.getElementById("menu-logout").addEventListener("click", async function 
   STATE.adminToken = null;
   STATE.adminNombre = null;
   localStorage.removeItem("adminToken");
+  // Sin sesión no se puede guardar una corrección: salimos del modo edición.
+  if (STATE.editandoId) salirModoEdicion();
   actualizarMenuAdmin();
   cerrarSidebar();
   mostrarToast("Sesión de administrador cerrada.");

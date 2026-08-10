@@ -72,6 +72,18 @@ COLUMNAS_DIAGNOSTICOS = [
 ]
 
 
+# Campos que un admin puede corregir desde el formulario de edición.
+# Deliberadamente excluye ID, FECHA_HORA, APROBADO, APROBADO_POR,
+# FECHA_APROBACION y ANULADO: esos los maneja el flujo de aprobación y
+# anulación, no una corrección manual.
+CAMPOS_EDITABLES = [
+    "PLATAFORMA", "CONTENEDOR", "RACK", "FILA", "COLUMNA", "DIAGNOSTICO",
+    "IP", "SN_DIGITAL", "SN_FISICA", "MAC", "MODELO", "TIPO_PIEZA",
+    "PSU_SN", "CHAIN_0", "CHAIN_1", "CHAIN_2", "FUGA", "ESTADO",
+    "SUPERVISOR", "OBSERVACION",
+]
+
+
 def _generar_id_unico(hoja) -> str:
     """
     Genera un ID con formato DX-YYYYMMDD-NNN, donde NNN es un correlativo
@@ -220,6 +232,49 @@ def anular_diagnostico(diagnostico_id: str, admin_nombre: str, motivo: str = "")
             valor_actual = hoja.cell(fila_numero, col_observacion).value or ""
             nueva_obs = f"{valor_actual} [ANULADO por {admin_nombre}: {motivo}]".strip()
             hoja.update_cell(fila_numero, col_observacion, nueva_obs)
+        return True
+
+
+def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> bool:
+    """
+    Corrige los campos editables de un diagnóstico ya registrado y deja
+    constancia de quién lo editó al final de OBSERVACION (mismo criterio
+    que anular_diagnostico). Devuelve False si el ID no existe.
+
+    Solo escribe las celdas que realmente cambiaron, en una única llamada
+    a la API. Si no cambió nada, no toca la planilla ni agrega constancia.
+    """
+    with _sheets_lock:
+        hoja = _hoja_diagnosticos()
+        fila_numero = _encontrar_fila_por_id(hoja, diagnostico_id)
+        if fila_numero is None:
+            return False
+
+        # La fila puede venir corta si las últimas celdas están vacías.
+        actuales = hoja.row_values(fila_numero)
+        actuales += [""] * (len(COLUMNAS_DIAGNOSTICOS) - len(actuales))
+
+        celdas = []
+        for campo in CAMPOS_EDITABLES:
+            indice = COLUMNAS_DIAGNOSTICOS.index(campo)
+            nuevo = str(datos.get(campo, "") or "").strip()
+            if nuevo != actuales[indice].strip():
+                celdas.append(gspread.Cell(fila_numero, indice + 1, nuevo))
+
+        if not celdas:
+            return True  # sin cambios: no ensuciamos OBSERVACION con una constancia vacía
+
+        # La constancia se agrega sobre lo que el admin dejó escrito en
+        # OBSERVACION, así que reemplazamos esa celda si ya estaba en la lista.
+        indice_obs = COLUMNAS_DIAGNOSTICOS.index("OBSERVACION")
+        fecha_hora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        observacion = str(datos.get("OBSERVACION", "") or "").strip()
+        nueva_obs = f"{observacion} [EDITADO por {admin_nombre}: {fecha_hora}]".strip()
+
+        celdas = [c for c in celdas if c.col != indice_obs + 1]
+        celdas.append(gspread.Cell(fila_numero, indice_obs + 1, nueva_obs))
+
+        hoja.update_cells(celdas, value_input_option="USER_ENTERED")
         return True
 
 

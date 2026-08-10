@@ -208,6 +208,25 @@ def aprobar(datos: models.AprobarInput):
     return {"ok": True}
 
 
+@app.post("/api/admin/editar")
+def editar(datos: models.EditarInput):
+    """
+    Corrige un diagnóstico ya cargado. Pasa por la misma validación que la
+    creación, así que una corrección no puede dejar el registro en un estado
+    que el formulario original no habría aceptado.
+    """
+    nombre_admin = _requerir_admin(datos.token)
+    errores = _validar_formulario(datos.datos)
+    if errores:
+        raise HTTPException(status_code=422, detail={"errores": errores})
+    exito = sheets_service.editar_diagnostico(
+        datos.diagnostico_id, nombre_admin, datos.datos.model_dump()
+    )
+    if not exito:
+        raise HTTPException(status_code=404, detail="Diagnóstico no encontrado.")
+    return {"ok": True}
+
+
 @app.post("/api/admin/anular")
 def anular(datos: models.AnularInput):
     nombre_admin = _requerir_admin(datos.token)

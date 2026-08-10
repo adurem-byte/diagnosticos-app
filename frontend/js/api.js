@@ -86,6 +86,13 @@ const API = (() => {
       });
     },
 
+    adminEditar(token, diagnosticoId, datos) {
+      return _request("/api/admin/editar", {
+        method: "POST",
+        body: JSON.stringify({ token, diagnostico_id: diagnosticoId, datos }),
+      });
+    },
+
     adminAnular(token, diagnosticoId, motivo) {
       return _request("/api/admin/anular", {
         method: "POST",
