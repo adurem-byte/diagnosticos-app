@@ -12,9 +12,11 @@ suficiente para evitar condiciones de carrera.
 """
 import threading
 import datetime
+import time
 from typing import Optional
 
 import gspread
+import requests
 from google.oauth2.service_account import Credentials
 
 import config
@@ -33,6 +35,76 @@ _cliente = None
 _planilla = None
 
 
+# ---------------------------------------------------------------------------
+# Reintentos ante fallos transitorios de Google
+#
+# La API de Sheets devuelve cada tanto un 503 ("service is currently
+# unavailable") o un 429 (rate limit) que se resuelven solos al repetir la
+# llamada un instante después. Sin reintento, ese hipo momentáneo le corta
+# la operación al usuario. Los errores permanentes (401 credenciales, 403
+# permisos, 404 hoja inexistente) NO se reintentan: repetirlos no cambia
+# nada y solo demora el mensaje de error.
+# ---------------------------------------------------------------------------
+_REINTENTOS = 3
+_ESPERA_INICIAL = 0.6  # segundos; se duplica en cada reintento
+_CODIGOS_TRANSITORIOS = {429, 500, 502, 503, 504}
+
+
+def _es_transitorio(error: Exception) -> bool:
+    if isinstance(error, gspread.exceptions.APIError):
+        codigo = getattr(error, "code", None)
+        if codigo not in _CODIGOS_TRANSITORIOS:
+            # Si gspread no pudo parsear el JSON del error, code queda en -1;
+            # en ese caso miramos el status HTTP crudo.
+            respuesta = getattr(error, "response", None)
+            codigo = getattr(respuesta, "status_code", None)
+        return codigo in _CODIGOS_TRANSITORIOS
+    # Cortes de red, DNS o timeouts hablando con Google.
+    return isinstance(error, (requests.exceptions.ConnectionError,
+                              requests.exceptions.Timeout))
+
+
+def _reintentar(operacion):
+    """
+    Ejecuta `operacion` reintentando ante fallos transitorios de Google.
+
+    IMPORTANTE: solo para operaciones idempotentes, donde repetir la llamada
+    deja el mismo resultado (lecturas, y escrituras con valores ya calculados
+    de antemano). Para append_row, que agrega una fila nueva cada vez, ver
+    _append_con_reintento.
+    """
+    espera = _ESPERA_INICIAL
+    for intento in range(1, _REINTENTOS + 1):
+        try:
+            return operacion()
+        except Exception as error:
+            if intento == _REINTENTOS or not _es_transitorio(error):
+                raise
+            time.sleep(espera)
+            espera *= 2
+
+
+def _append_con_reintento(hoja, fila: list, id_esperado: str) -> None:
+    """
+    append_row no es idempotente: si Google falla DESPUÉS de haber agregado
+    la fila, reintentar a ciegas duplicaría el diagnóstico. Por eso, antes
+    de cada reintento, verificamos si el ID ya quedó escrito.
+    """
+    espera = _ESPERA_INICIAL
+    for intento in range(1, _REINTENTOS + 1):
+        try:
+            hoja.append_row(fila, value_input_option="USER_ENTERED")
+            return
+        except Exception as error:
+            if intento == _REINTENTOS or not _es_transitorio(error):
+                raise
+            time.sleep(espera)
+            espera *= 2
+            # Si el intento anterior sí alcanzó a escribir, no lo repetimos.
+            if id_esperado in _reintentar(lambda: hoja.col_values(1)):
+                return
+
+
 def _conectar():
     """Crea (una sola vez) la conexión autenticada con Google Sheets."""
     global _cliente, _planilla
@@ -46,20 +118,29 @@ def _conectar():
     return _planilla
 
 
+def _hoja(nombre: str):
+    """
+    Devuelve una pestaña por nombre. Va con reintento porque resolver la
+    hoja implica pedirle los metadatos de la planilla a Google, y es
+    justamente el paso que más seguido se topa con un 503 transitorio.
+    """
+    return _reintentar(lambda: _conectar().worksheet(nombre))
+
+
 def _hoja_diagnosticos():
-    return _conectar().worksheet(config.SHEET_DIAGNOSTICOS)
+    return _hoja(config.SHEET_DIAGNOSTICOS)
 
 
 def _hoja_administradores():
-    return _conectar().worksheet(config.SHEET_ADMINISTRADORES)
+    return _hoja(config.SHEET_ADMINISTRADORES)
 
 
 def _hoja_historial_reparaciones():
-    return _conectar().worksheet(config.SHEET_HISTORIAL_REPARACIONES)
+    return _hoja(config.SHEET_HISTORIAL_REPARACIONES)
 
 
 def _hoja_warranty_bd():
-    return _conectar().worksheet(config.SHEET_WARRANTY_BD)
+    return _hoja(config.SHEET_WARRANTY_BD)
 
 
 # Encabezados exactos esperados en la pestaña "Diagnosticos"
@@ -92,7 +173,7 @@ def _generar_id_unico(hoja) -> str:
     """
     hoy = datetime.date.today().strftime("%Y%m%d")
     prefijo = f"DX-{hoy}-"
-    valores_id = hoja.col_values(1)  # Columna A completa = IDs existentes
+    valores_id = _reintentar(lambda: hoja.col_values(1))  # Columna A completa = IDs existentes
     correlativos_hoy = [
         int(v.split("-")[-1])
         for v in valores_id
@@ -129,7 +210,7 @@ def crear_diagnostico(datos: dict) -> str:
             else:
                 fila.append(str(datos.get(columna, "") or ""))
 
-        hoja.append_row(fila, value_input_option="USER_ENTERED")
+        _append_con_reintento(hoja, fila, nuevo_id)
         return nuevo_id
 
 
@@ -144,7 +225,7 @@ def _todas_las_filas() -> list:
     (strip + mayúsculas) y armamos los diccionarios nosotros mismos.
     """
     hoja = _hoja_diagnosticos()
-    todos_los_valores = hoja.get_all_values()
+    todos_los_valores = _reintentar(hoja.get_all_values)
     if not todos_los_valores:
         return []
 
@@ -196,7 +277,7 @@ def contar_pendientes_por_supervisor() -> dict:
 
 def _encontrar_fila_por_id(hoja, diagnostico_id: str) -> Optional[int]:
     """Devuelve el número de fila (1-indexed, incluye encabezado) o None."""
-    columna_ids = hoja.col_values(1)
+    columna_ids = _reintentar(lambda: hoja.col_values(1))
     for indice, valor in enumerate(columna_ids, start=1):
         if valor == diagnostico_id:
             return indice
@@ -213,9 +294,11 @@ def aprobar_diagnostico(diagnostico_id: str, admin_nombre: str) -> bool:
         col_aprobado_por = COLUMNAS_DIAGNOSTICOS.index("APROBADO_POR") + 1
         col_fecha_aprobacion = COLUMNAS_DIAGNOSTICOS.index("FECHA_APROBACION") + 1
         fecha_hora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        hoja.update_cell(fila_numero, col_aprobado, "SI")
-        hoja.update_cell(fila_numero, col_aprobado_por, admin_nombre)
-        hoja.update_cell(fila_numero, col_fecha_aprobacion, fecha_hora)
+        # Escribir el mismo valor dos veces deja el mismo resultado, así que
+        # cada celda se puede reintentar sin riesgo.
+        _reintentar(lambda: hoja.update_cell(fila_numero, col_aprobado, "SI"))
+        _reintentar(lambda: hoja.update_cell(fila_numero, col_aprobado_por, admin_nombre))
+        _reintentar(lambda: hoja.update_cell(fila_numero, col_fecha_aprobacion, fecha_hora))
         return True
 
 
@@ -227,11 +310,14 @@ def anular_diagnostico(diagnostico_id: str, admin_nombre: str, motivo: str = "")
             return False
         col_anulado = COLUMNAS_DIAGNOSTICOS.index("ANULADO") + 1
         col_observacion = COLUMNAS_DIAGNOSTICOS.index("OBSERVACION") + 1
-        hoja.update_cell(fila_numero, col_anulado, "SI")
+        _reintentar(lambda: hoja.update_cell(fila_numero, col_anulado, "SI"))
         if motivo:
-            valor_actual = hoja.cell(fila_numero, col_observacion).value or ""
+            valor_actual = _reintentar(lambda: hoja.cell(fila_numero, col_observacion).value) or ""
+            # La observación se arma una sola vez, antes de escribir: así el
+            # reintento reescribe el mismo texto en lugar de encadenar otra
+            # constancia sobre la que ya se guardó.
             nueva_obs = f"{valor_actual} [ANULADO por {admin_nombre}: {motivo}]".strip()
-            hoja.update_cell(fila_numero, col_observacion, nueva_obs)
+            _reintentar(lambda: hoja.update_cell(fila_numero, col_observacion, nueva_obs))
         return True
 
 
@@ -251,7 +337,7 @@ def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> b
             return False
 
         # La fila puede venir corta si las últimas celdas están vacías.
-        actuales = hoja.row_values(fila_numero)
+        actuales = _reintentar(lambda: hoja.row_values(fila_numero))
         actuales += [""] * (len(COLUMNAS_DIAGNOSTICOS) - len(actuales))
 
         celdas = []
@@ -274,7 +360,9 @@ def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> b
         celdas = [c for c in celdas if c.col != indice_obs + 1]
         celdas.append(gspread.Cell(fila_numero, indice_obs + 1, nueva_obs))
 
-        hoja.update_cells(celdas, value_input_option="USER_ENTERED")
+        # Las celdas se calcularon antes de escribir, así que reintentar
+        # reescribe exactamente lo mismo.
+        _reintentar(lambda: hoja.update_cells(celdas, value_input_option="USER_ENTERED"))
         return True
 
 
@@ -284,7 +372,7 @@ def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> b
 
 def obtener_admin_por_usuario(usuario: str) -> Optional[dict]:
     hoja = _hoja_administradores()
-    registros = hoja.get_all_records()
+    registros = _reintentar(hoja.get_all_records)
     for registro in registros:
         if str(registro.get("USUARIO", "")).strip().lower() == usuario.strip().lower():
             return registro
@@ -320,8 +408,6 @@ def _leer_historial_reparaciones() -> dict:
     a partir de la hoja Historial_Reparaciones, usando un caché en memoria
     de _CACHE_HISTORIAL_SEGUNDOS para no golpear la API en cada consulta.
     """
-    import time
-
     with _cache_historial_lock:
         ahora = time.time()
         si_cache_vigente = (
@@ -332,7 +418,7 @@ def _leer_historial_reparaciones() -> dict:
             return _cache_historial["datos"]
 
         hoja = _hoja_historial_reparaciones()
-        valores = hoja.get_all_values()
+        valores = _reintentar(hoja.get_all_values)
         mapa = {}
         if valores:
             encabezados = [h.strip().upper() for h in valores[0]]
@@ -402,8 +488,6 @@ def _leer_warranty_bd() -> dict:
     la hoja Warranty_BD (columna A = SN, columna B = fecha), usando un
     caché en memoria de _CACHE_WARRANTY_SEGUNDOS.
     """
-    import time
-
     with _cache_warranty_lock:
         ahora = time.time()
         si_cache_vigente = (
@@ -414,7 +498,7 @@ def _leer_warranty_bd() -> dict:
             return _cache_warranty["datos"]
 
         hoja = _hoja_warranty_bd()
-        valores = hoja.get_all_values()
+        valores = _reintentar(hoja.get_all_values)
         mapa = {}
         for fila in valores[1:]:  # saltamos el encabezado
             if len(fila) < 2:
