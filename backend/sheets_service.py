@@ -211,6 +211,7 @@ def crear_diagnostico(datos: dict) -> str:
                 fila.append(str(datos.get(columna, "") or ""))
 
         _append_con_reintento(hoja, fila, nuevo_id)
+        invalidar_cache_resumen()
         return nuevo_id
 
 
@@ -262,17 +263,66 @@ def listar_diagnosticos(solo_pendientes: bool = False) -> list:
     return filas
 
 
-def contar_pendientes_por_supervisor() -> dict:
+# ---------------------------------------------------------------------------
+# Resumen de pendientes
+#
+# Lo consulta el banner de la pantalla principal y, cada par de minutos,
+# cada navegador con sesión de admin abierta para enterarse de traslados
+# nuevos. Sin caché, cada una de esas consultas dispararía una lectura
+# completa de la planilla, y entre varios admins nos acercaríamos al límite
+# de cuota de la API de Google. Con caché, N admins consultando cuestan una
+# sola lectura por ventana.
+#
+# El caché se invalida al crear, aprobar, anular o editar, así que la
+# pantalla nunca muestra un total viejo después de una acción propia.
+# ---------------------------------------------------------------------------
+_CACHE_RESUMEN_SEGUNDOS = 45
+_cache_resumen = {"datos": None, "leido_en": 0.0}
+_cache_resumen_lock = threading.Lock()
+
+
+def invalidar_cache_resumen() -> None:
+    with _cache_resumen_lock:
+        _cache_resumen["datos"] = None
+
+
+def resumen_pendientes() -> dict:
     """
-    Devuelve {nombre_supervisor: cantidad_pendiente} para mostrar en la
-    pantalla principal cuánto le falta aprobar a cada supervisor.
+    Devuelve {"total_pendientes", "por_supervisor", "ultimo_id"}.
+
+    "ultimo_id" es el ID de la última fila cargada: el frontend lo compara
+    contra el que vio la vez anterior para saber si entró un traslado nuevo.
     """
-    pendientes = listar_diagnosticos(solo_pendientes=True)
-    conteo = {}
-    for fila in pendientes:
-        supervisor = fila.get("SUPERVISOR", "Desconocido")
-        conteo[supervisor] = conteo.get(supervisor, 0) + 1
-    return conteo
+    with _cache_resumen_lock:
+        ahora = time.time()
+        vigente = (
+            _cache_resumen["datos"] is not None
+            and (ahora - _cache_resumen["leido_en"]) < _CACHE_RESUMEN_SEGUNDOS
+        )
+        if vigente:
+            return _cache_resumen["datos"]
+
+        # Usamos _todas_las_filas en vez de listar_diagnosticos porque acá no
+        # hacen falta el historial ni la garantía de cada SN.
+        filas = _todas_las_filas()
+        conteo = {}
+        total = 0
+        for fila in filas:
+            aprobado = str(fila.get("APROBADO", "")).upper() == "NO"
+            anulado = str(fila.get("ANULADO", "")).upper() == "SI"
+            if aprobado and not anulado:
+                supervisor = fila.get("SUPERVISOR", "Desconocido")
+                conteo[supervisor] = conteo.get(supervisor, 0) + 1
+                total += 1
+
+        datos = {
+            "total_pendientes": total,
+            "por_supervisor": conteo,
+            "ultimo_id": filas[-1].get("ID", "") if filas else "",
+        }
+        _cache_resumen["datos"] = datos
+        _cache_resumen["leido_en"] = ahora
+        return datos
 
 
 def _encontrar_fila_por_id(hoja, diagnostico_id: str) -> Optional[int]:
@@ -299,6 +349,7 @@ def aprobar_diagnostico(diagnostico_id: str, admin_nombre: str) -> bool:
         _reintentar(lambda: hoja.update_cell(fila_numero, col_aprobado, "SI"))
         _reintentar(lambda: hoja.update_cell(fila_numero, col_aprobado_por, admin_nombre))
         _reintentar(lambda: hoja.update_cell(fila_numero, col_fecha_aprobacion, fecha_hora))
+        invalidar_cache_resumen()
         return True
 
 
@@ -318,6 +369,7 @@ def anular_diagnostico(diagnostico_id: str, admin_nombre: str, motivo: str = "")
             # constancia sobre la que ya se guardó.
             nueva_obs = f"{valor_actual} [ANULADO por {admin_nombre}: {motivo}]".strip()
             _reintentar(lambda: hoja.update_cell(fila_numero, col_observacion, nueva_obs))
+        invalidar_cache_resumen()
         return True
 
 
@@ -348,7 +400,7 @@ def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> b
                 celdas.append(gspread.Cell(fila_numero, indice + 1, nuevo))
 
         if not celdas:
-            return True  # sin cambios: no ensuciamos OBSERVACION con una constancia vacía
+            return True  # sin cambios: no ensuciamos OBSERVACION con una constancia vacía, ni invalidamos el caché
 
         # La constancia se agrega sobre lo que el admin dejó escrito en
         # OBSERVACION, así que reemplazamos esa celda si ya estaba en la lista.
@@ -363,6 +415,7 @@ def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> b
         # Las celdas se calcularon antes de escribir, así que reintentar
         # reescribe exactamente lo mismo.
         _reintentar(lambda: hoja.update_cells(celdas, value_input_option="USER_ENTERED"))
+        invalidar_cache_resumen()
         return True
 
 

@@ -161,11 +161,10 @@ def resumen_pendientes():
     """
     Para la pantalla principal: cuántos traslados pendientes hay por
     supervisor, para que cualquiera (sin ser admin) vea cuánto falta
-    aprobar.
+    aprobar. Incluye "ultimo_id", que los navegadores con sesión de admin
+    usan para detectar traslados nuevos sin traerse la planilla entera.
     """
-    conteo = sheets_service.contar_pendientes_por_supervisor()
-    total = sum(conteo.values())
-    return {"total_pendientes": total, "por_supervisor": conteo}
+    return sheets_service.resumen_pendientes()
 
 
 # ---------------------------------------------------------------------------

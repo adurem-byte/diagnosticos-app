@@ -58,6 +58,10 @@ async function intentarLogin() {
     STATE.adminToken = respuesta.token;
     STATE.adminNombre = respuesta.nombre;
     localStorage.setItem("adminToken", respuesta.token);
+    // El permiso se pide acá, sobre el gesto de iniciar sesión: pedirlo al
+    // cargar la página hace que los navegadores lo ignoren.
+    pedirPermisoNotificaciones();
+    iniciarVigilanciaTraslados();
     actualizarMenuAdmin();
     cerrarModal("modal-login");
     mostrarToast("Sesión iniciada como " + respuesta.nombre + ".");
@@ -94,6 +98,7 @@ document.getElementById("menu-logout").addEventListener("click", async function 
   STATE.adminToken = null;
   STATE.adminNombre = null;
   localStorage.removeItem("adminToken");
+  detenerVigilanciaTraslados();
   // Sin sesión no se puede guardar una corrección: salimos del modo edición.
   if (STATE.editandoId) salirModoEdicion();
   actualizarMenuAdmin();
@@ -114,6 +119,7 @@ document.getElementById("menu-logout").addEventListener("click", async function 
       const respuesta = await API.adminVerificar(tokenGuardado);
       STATE.adminToken = tokenGuardado;
       STATE.adminNombre = respuesta.nombre;
+      iniciarVigilanciaTraslados();
     } catch (err) {
       localStorage.removeItem("adminToken"); // token vencido o inválido
     }

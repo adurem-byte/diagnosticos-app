@@ -25,6 +25,9 @@ const STATE = {
   filasRegistro: [],
   // ID del diagnóstico que se está corrigiendo, o null si es una carga nueva.
   editandoId: null,
+  // Último ID visto en la planilla: si aparece uno distinto, entró un
+  // traslado nuevo y hay que avisarle al admin.
+  ultimoIdVisto: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -562,23 +565,126 @@ document.getElementById("btn-exito-cerrar").addEventListener("click", function (
 // ---------------------------------------------------------------------------
 // Banner de pendientes (visible siempre, sin necesidad de admin)
 // ---------------------------------------------------------------------------
-async function actualizarBannerPendientes() {
+function pintarBannerPendientes(resumen) {
   const banner = document.getElementById("status-banner");
+  const texto = document.getElementById("status-banner-text");
+  if (resumen.total_pendientes === 0) {
+    banner.classList.add("is-empty");
+    texto.innerHTML = "<strong>Sin traslados pendientes.</strong> Todas las solicitudes están aprobadas.";
+    return;
+  }
+  banner.classList.remove("is-empty");
+  const partes = Object.entries(resumen.por_supervisor)
+    .map(function (par) { return "<strong>" + par[0] + "</strong>: " + par[1]; })
+    .join(" · ");
+  texto.innerHTML = "<strong>" + resumen.total_pendientes + " traslado(s) pendiente(s)</strong> de aprobación — " + partes;
+}
+
+async function actualizarBannerPendientes() {
   const texto = document.getElementById("status-banner-text");
   try {
     const resumen = await API.resumenPendientes();
-    if (resumen.total_pendientes === 0) {
-      banner.classList.add("is-empty");
-      texto.innerHTML = "<strong>Sin traslados pendientes.</strong> Todas las solicitudes están aprobadas.";
-      return;
-    }
-    banner.classList.remove("is-empty");
-    const partes = Object.entries(resumen.por_supervisor)
-      .map(function (par) { return "<strong>" + par[0] + "</strong>: " + par[1]; })
-      .join(" · ");
-    texto.innerHTML = "<strong>" + resumen.total_pendientes + " traslado(s) pendiente(s)</strong> de aprobación — " + partes;
+    STATE.ultimoIdVisto = resumen.ultimo_id || STATE.ultimoIdVisto;
+    pintarBannerPendientes(resumen);
   } catch (err) {
     texto.textContent = "No se pudo cargar el estado de traslados pendientes.";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Aviso de traslados nuevos (solo con sesión de admin abierta)
+//
+// Cada tanto le preguntamos al backend el resumen de pendientes, que ya
+// viene cacheado del lado del servidor, y comparamos "ultimo_id" contra el
+// último que vimos. Si cambió, entró una solicitud nueva y avisamos por
+// tres vías: cartel en la app, notificación del sistema (que se ve aunque
+// la pestaña esté en segundo plano) y un sonido corto.
+// ---------------------------------------------------------------------------
+const INTERVALO_AVISOS_MS = 2 * 60 * 1000;
+let temporizadorAvisos = null;
+
+function sonarAviso() {
+  // Generamos el beep con Web Audio en vez de cargar un archivo: así no hay
+  // un asset más que servir ni que pueda faltar.
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const volumen = ctx.createGain();
+    osc.connect(volumen);
+    volumen.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1170, ctx.currentTime + 0.12);
+    volumen.gain.setValueAtTime(0.0001, ctx.currentTime);
+    volumen.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    volumen.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.32);
+    osc.onended = function () { ctx.close(); };
+  } catch (err) {
+    // Sin audio disponible: el aviso visual alcanza.
+  }
+}
+
+function pedirPermisoNotificaciones() {
+  // Se llama al iniciar sesión, que es un gesto del usuario: los navegadores
+  // ignoran (o penalizan) el pedido si llega solo al cargar la página.
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    try { Notification.requestPermission(); } catch (err) { /* navegador viejo */ }
+  }
+}
+
+function notificarEscritorio(titulo, cuerpo) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    // El tag hace que un aviso nuevo reemplace al anterior en lugar de
+    // apilar notificaciones si el admin estuvo un rato sin mirar.
+    new Notification(titulo, { body: cuerpo, tag: "traslado-nuevo", renotify: true });
+  } catch (err) {
+    // Algunos navegadores móviles solo permiten notificaciones vía service
+    // worker; en ese caso nos quedamos con el cartel y el sonido.
+  }
+}
+
+async function revisarTrasladosNuevos() {
+  if (!STATE.adminToken) return;
+  try {
+    const resumen = await API.resumenPendientes();
+    pintarBannerPendientes(resumen);
+
+    const ultimo = resumen.ultimo_id || "";
+    const hayNovedad = STATE.ultimoIdVisto && ultimo && ultimo !== STATE.ultimoIdVisto;
+    STATE.ultimoIdVisto = ultimo || STATE.ultimoIdVisto;
+    if (!hayNovedad) return;
+
+    const mensaje = "Nuevo traslado solicitado (" + ultimo + "). " +
+      resumen.total_pendientes + " pendiente(s) de aprobación.";
+    mostrarToast(mensaje);
+    notificarEscritorio("Nuevo traslado solicitado", mensaje);
+    sonarAviso();
+
+    // Si el admin está mirando el registro, que aparezca sin recargar.
+    if (!document.getElementById("view-registro").classList.contains("is-hidden")) {
+      cargarRegistro();
+    }
+  } catch (err) {
+    // Es un chequeo de fondo: si falla, se reintenta en el próximo ciclo
+    // sin molestar al usuario con un error.
+  }
+}
+
+function iniciarVigilanciaTraslados() {
+  detenerVigilanciaTraslados();
+  temporizadorAvisos = setInterval(revisarTrasladosNuevos, INTERVALO_AVISOS_MS);
+}
+
+function detenerVigilanciaTraslados() {
+  if (temporizadorAvisos !== null) {
+    clearInterval(temporizadorAvisos);
+    temporizadorAvisos = null;
   }
 }
 
