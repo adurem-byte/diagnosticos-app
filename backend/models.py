@@ -25,6 +25,10 @@ FUGA_OPCIONES = ["INTERNO", "MANGUERITA", "CONJ. DE DIST."]
 
 ESTADO_OPCIONES = ["Desconectado", "Desconectado y log descargado"]
 
+# Semilla de diagnosticadores: solo se usa para llenar la pestaña
+# "Diagnosticadores" la primera vez. A partir de ahí la lista vive en la
+# planilla y se administra desde el panel de admin, así que editar esto no
+# cambia nada en una instalación ya andando.
 SUPERVISORES = [
     "Daniel Bruno",
     "Alexis Chavez",
@@ -101,3 +105,9 @@ class EditarInput(BaseModel):
     token: str
     diagnostico_id: str
     datos: DiagnosticoInput
+
+
+class DiagnosticadoresInput(BaseModel):
+    """Lista completa de diagnosticadores tal como debe quedar guardada."""
+    token: str
+    nombres: list[str]

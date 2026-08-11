@@ -143,6 +143,39 @@ def _hoja_warranty_bd():
     return _hoja(config.SHEET_WARRANTY_BD)
 
 
+# Lock propio para crear la pestaña de diagnosticadores. No reusamos
+# _sheets_lock porque las funciones de escritura ya lo tienen tomado cuando
+# piden la hoja, y un Lock simple no es reentrante: sería un bloqueo mutuo.
+_creacion_hoja_lock = threading.Lock()
+
+
+def _hoja_diagnosticadores():
+    """
+    Devuelve la pestaña de diagnosticadores, creándola la primera vez con
+    los nombres que hasta ahora vivían fijos en el código. Así la planilla
+    no necesita preparación manual antes de estrenar la función.
+    """
+    try:
+        return _hoja(config.SHEET_DIAGNOSTICADORES)
+    except gspread.exceptions.WorksheetNotFound:
+        pass
+
+    with _creacion_hoja_lock:
+        # Otro pedido pudo haberla creado mientras esperábamos el lock.
+        try:
+            return _hoja(config.SHEET_DIAGNOSTICADORES)
+        except gspread.exceptions.WorksheetNotFound:
+            import models
+
+            planilla = _conectar()
+            hoja = _reintentar(lambda: planilla.add_worksheet(
+                title=config.SHEET_DIAGNOSTICADORES, rows=200, cols=1
+            ))
+            filas = [["NOMBRE"]] + [[nombre] for nombre in models.SUPERVISORES]
+            _reintentar(lambda: hoja.append_rows(filas, value_input_option="RAW"))
+            return hoja
+
+
 # Encabezados exactos esperados en la pestaña "Diagnosticos"
 COLUMNAS_DIAGNOSTICOS = [
     "ID", "FECHA_HORA", "PLATAFORMA", "CONTENEDOR", "RACK", "FILA", "COLUMNA",
@@ -417,6 +450,86 @@ def editar_diagnostico(diagnostico_id: str, admin_nombre: str, datos: dict) -> b
         _reintentar(lambda: hoja.update_cells(celdas, value_input_option="USER_ENTERED"))
         invalidar_cache_resumen()
         return True
+
+
+# ---------------------------------------------------------------------------
+# Diagnosticadores
+#
+# La lista vive en su propia pestaña para poder editarla desde el panel de
+# admin sin tocar el código ni redesplegar. Renombrar acá NO reescribe los
+# diagnósticos ya cargados: cada registro conserva el nombre con el que se
+# guardó, para no atribuirle a alguien trabajo que no hizo si en el futuro
+# se reemplaza a una persona por otra.
+# ---------------------------------------------------------------------------
+_CACHE_DIAGNOSTICADORES_SEGUNDOS = 60
+_cache_diagnosticadores = {"datos": None, "leido_en": 0.0}
+_cache_diagnosticadores_lock = threading.Lock()
+
+
+def invalidar_cache_diagnosticadores() -> None:
+    with _cache_diagnosticadores_lock:
+        _cache_diagnosticadores["datos"] = None
+
+
+def listar_diagnosticadores() -> list:
+    """Nombres en el orden en que figuran en la planilla."""
+    with _cache_diagnosticadores_lock:
+        ahora = time.time()
+        vigente = (
+            _cache_diagnosticadores["datos"] is not None
+            and (ahora - _cache_diagnosticadores["leido_en"]) < _CACHE_DIAGNOSTICADORES_SEGUNDOS
+        )
+        if vigente:
+            return _cache_diagnosticadores["datos"]
+
+        hoja = _hoja_diagnosticadores()
+        valores = _reintentar(lambda: hoja.col_values(1))
+        nombres = [v.strip() for v in valores[1:] if v.strip()]  # saltamos el encabezado
+
+        _cache_diagnosticadores["datos"] = nombres
+        _cache_diagnosticadores["leido_en"] = ahora
+        return nombres
+
+
+def listar_diagnosticadores_tolerante() -> list:
+    """
+    Como listar_diagnosticadores, pero ante un fallo de Google devuelve lo
+    último que supimos (o la semilla del código) en lugar de propagar el
+    error. Lo usa /api/catalogos: ese endpoint hasta ahora no dependía de la
+    planilla, y sin esta red un 503 pasajero dejaría al formulario sin poder
+    armar sus desplegables.
+    """
+    try:
+        return listar_diagnosticadores()
+    except Exception:
+        import models
+
+        with _cache_diagnosticadores_lock:
+            ultimos = _cache_diagnosticadores["datos"]
+        return list(ultimos) if ultimos else list(models.SUPERVISORES)
+
+
+def guardar_diagnosticadores(nombres: list) -> None:
+    """
+    Reescribe la lista completa.
+
+    Recibir la lista entera en vez de altas/bajas sueltas hace que renombrar,
+    agregar, quitar y reordenar sean todos el mismo caso, y deja la escritura
+    idempotente: si hay que reintentarla, el resultado es el mismo.
+    """
+    if not nombres:
+        # Sin esta guarda, un error del frontend borraría la lista entera y
+        # dejaría el formulario sin diagnosticadores para elegir.
+        raise ValueError("La lista de diagnosticadores no puede quedar vacía.")
+
+    with _sheets_lock:
+        hoja = _hoja_diagnosticadores()
+        # Limpiamos antes de escribir para que una baja no deje filas viejas
+        # colgando al final de la columna.
+        _reintentar(hoja.clear)
+        filas = [["NOMBRE"]] + [[nombre] for nombre in nombres]
+        _reintentar(lambda: hoja.append_rows(filas, value_input_option="RAW"))
+        invalidar_cache_diagnosticadores()
 
 
 # ---------------------------------------------------------------------------

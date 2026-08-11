@@ -45,6 +45,8 @@ SHEET_DIAGNOSTICOS = "Diagnosticos"
 SHEET_ADMINISTRADORES = "Administradores"
 SHEET_HISTORIAL_REPARACIONES = "Historial_Reparaciones"
 SHEET_WARRANTY_BD = "Warranty_BD"
+# La crea la propia app la primera vez, sembrada con models.SUPERVISORES.
+SHEET_DIAGNOSTICADORES = "Diagnosticadores"
 
 if not SPREADSHEET_ID:
     raise RuntimeError(

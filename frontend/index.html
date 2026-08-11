@@ -58,6 +58,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       Aprobar traslados
     </button>
+    <button class="sidebar-item is-hidden" id="menu-diagnosticadores">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Diagnosticadores
+    </button>
     <button class="sidebar-item is-hidden" id="menu-logout">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Cerrar sesión admin
@@ -270,6 +274,27 @@
     </div>
   </section>
 
+  <!-- Vista: Diagnosticadores (solo admin) -->
+  <section id="view-diagnosticadores" class="is-hidden">
+    <div class="form-card">
+      <div class="form-section">
+        <p class="form-section__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Diagnosticadores
+        </p>
+        <p class="field__hint" id="diagnosticadores-ayuda">
+          Corregí, agregá o quitá nombres. Los diagnósticos ya cargados conservan
+          el nombre con el que se guardaron.
+        </p>
+        <div id="diagnosticadores-lista"></div>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-agregar-diagnosticador">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          Agregar diagnosticador
+        </button>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <!-- ============================== STICKY ACTION BAR ============================== -->
@@ -281,6 +306,18 @@
     <button type="button" class="btn btn-primary btn-block" id="btn-confirmar-diagnostico">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
       <span id="btn-confirmar-texto">Confirmar diagnóstico realizado</span>
+    </button>
+  </div>
+</div>
+
+<div class="sticky-action-bar" id="sticky-bar-diagnosticadores" style="display:none;">
+  <div class="sticky-action-bar__inner">
+    <button type="button" class="btn btn-secondary" id="btn-cancelar-diagnosticadores">
+      Cancelar
+    </button>
+    <button type="button" class="btn btn-primary btn-block" id="btn-guardar-diagnosticadores">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <span id="btn-guardar-diagnosticadores-texto">Guardar diagnosticadores</span>
     </button>
   </div>
 </div>

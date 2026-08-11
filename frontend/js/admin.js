@@ -12,6 +12,7 @@
 function actualizarMenuAdmin() {
   const labelAdmin = document.getElementById("menu-admin-label");
   const btnAprobaciones = document.getElementById("menu-aprobaciones");
+  const btnDiagnosticadores = document.getElementById("menu-diagnosticadores");
   const btnLogout = document.getElementById("menu-logout");
   const btnAdmin = document.getElementById("menu-admin");
 
@@ -19,14 +20,26 @@ function actualizarMenuAdmin() {
     labelAdmin.textContent = "Admin: " + STATE.adminNombre;
     btnAdmin.classList.add("is-hidden");
     btnAprobaciones.classList.remove("is-hidden");
+    btnDiagnosticadores.classList.remove("is-hidden");
     btnLogout.classList.remove("is-hidden");
   } else {
     labelAdmin.textContent = "Acceso administrador";
     btnAdmin.classList.remove("is-hidden");
     btnAprobaciones.classList.add("is-hidden");
+    btnDiagnosticadores.classList.add("is-hidden");
     btnLogout.classList.add("is-hidden");
+    // Si estaba en el apartado de diagnosticadores al cerrar sesión, lo
+    // sacamos de ahí: sin token no podría guardar nada.
+    if (!document.getElementById("view-diagnosticadores").classList.contains("is-hidden")) {
+      mostrarVista("form");
+    }
   }
 }
+
+document.getElementById("menu-diagnosticadores").addEventListener("click", function () {
+  abrirDiagnosticadores();
+  cerrarSidebar();
+});
 
 document.getElementById("menu-admin").addEventListener("click", function () {
   document.getElementById("login-usuario").value = "";

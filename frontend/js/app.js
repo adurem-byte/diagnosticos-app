@@ -689,6 +689,117 @@ function detenerVigilanciaTraslados() {
 }
 
 // ---------------------------------------------------------------------------
+// Administración de diagnosticadores (solo admin)
+//
+// La lista se edita entera y se guarda de una sola vez: así renombrar,
+// agregar y quitar son el mismo caso, sin llamadas sueltas por cada cambio.
+// Renombrar acá no toca los diagnósticos ya cargados, que conservan el
+// nombre con el que se guardaron.
+// ---------------------------------------------------------------------------
+function filaDiagnosticador(nombre) {
+  // Sin la clase .field a propósito: esa apila en columna y acá queremos el
+  // nombre y el botón de quitar en la misma línea.
+  const fila = document.createElement("div");
+  fila.style.cssText = "display:flex; flex-direction:row; gap:8px; align-items:center; margin-bottom:8px;";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = nombre || "";
+  input.placeholder = "Nombre y apellido";
+  input.setAttribute("data-diagnosticador", "");
+  input.style.cssText = "flex:1; min-width:0;";  // min-width:0 evita que el input desborde en pantallas angostas
+
+  const quitar = document.createElement("button");
+  quitar.type = "button";
+  quitar.className = "btn btn-danger btn-sm";
+  quitar.textContent = "Quitar";
+  quitar.style.flexShrink = "0";
+  quitar.addEventListener("click", function () { fila.remove(); });
+
+  fila.appendChild(input);
+  fila.appendChild(quitar);
+  return fila;
+}
+
+function nombresDiagnosticadoresEnPantalla() {
+  const inputs = document.querySelectorAll("[data-diagnosticador]");
+  return Array.prototype.map.call(inputs, function (i) { return i.value.trim(); })
+    .filter(function (n) { return n !== ""; });
+}
+
+async function refrescarCatalogoDiagnosticadores() {
+  // Solo tocamos los dos selects que dependen de esta lista, en vez de
+  // recargar todos los catálogos: así no se borra un formulario a medio
+  // llenar ni el filtro que el admin tenía puesto en el registro.
+  const catalogos = await API.obtenerCatalogos();
+  STATE.catalogos = catalogos;
+
+  const seleccionado = valorDe("SUPERVISOR");
+  llenarSelect(elementoDe("SUPERVISOR"), catalogos.supervisores, "Seleccionar…");
+  if (seleccionado) asignarValorCampo("SUPERVISOR", seleccionado);
+
+  const filtro = document.getElementById("registro-filtro-supervisor");
+  const filtrado = filtro.value;
+  llenarSelect(filtro, catalogos.supervisores, "Todos los diagnosticadores");
+  filtro.value = filtrado;  // si ese nombre ya no existe, queda en "todos"
+}
+
+function abrirDiagnosticadores() {
+  const contenedor = document.getElementById("diagnosticadores-lista");
+  contenedor.innerHTML = "";
+  const nombres = (STATE.catalogos && STATE.catalogos.supervisores) || [];
+  nombres.forEach(function (nombre) { contenedor.appendChild(filaDiagnosticador(nombre)); });
+  mostrarVista("diagnosticadores");
+}
+
+document.getElementById("btn-agregar-diagnosticador").addEventListener("click", function () {
+  const fila = filaDiagnosticador("");
+  document.getElementById("diagnosticadores-lista").appendChild(fila);
+  fila.querySelector("input").focus();
+});
+
+document.getElementById("btn-cancelar-diagnosticadores").addEventListener("click", function () {
+  mostrarVista("form");
+});
+
+document.getElementById("btn-guardar-diagnosticadores").addEventListener("click", async function () {
+  const nombres = nombresDiagnosticadoresEnPantalla();
+  if (nombres.length === 0) {
+    mostrarToast("Tiene que quedar al menos un diagnosticador.", "error");
+    return;
+  }
+  const repetidos = new Set(nombres.map(function (n) { return n.toLowerCase(); }));
+  if (repetidos.size !== nombres.length) {
+    mostrarToast("Hay nombres repetidos en la lista.", "error");
+    return;
+  }
+
+  const boton = document.getElementById("btn-guardar-diagnosticadores");
+  const texto = document.getElementById("btn-guardar-diagnosticadores-texto");
+  const textoOriginal = texto.textContent;
+  boton.disabled = true;
+  texto.textContent = "Guardando…";
+
+  try {
+    await API.guardarDiagnosticadores(STATE.adminToken, nombres);
+    await refrescarCatalogoDiagnosticadores();
+    mostrarToast("Diagnosticadores actualizados.");
+    mostrarVista("form");
+  } catch (err) {
+    if (err.status === 401) {
+      mostrarToast("Tu sesión de administrador expiró. Iniciá sesión nuevamente.", "error");
+    } else if (err.status === 422 && err.detail) {
+      mostrarToast(err.detail, "error");
+    } else {
+      mostrarToast("No se pudieron guardar los diagnosticadores. Intentá nuevamente.", "error");
+    }
+  } finally {
+    boton.disabled = false;
+    texto.textContent = textoOriginal;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Sidebar (menú hamburguesa)
 // ---------------------------------------------------------------------------
 const sidebar = document.getElementById("sidebar");
@@ -722,19 +833,22 @@ document.getElementById("menu-registro").addEventListener("click", function () {
 // Cambio de vista (Formulario <-> Registro)
 // ---------------------------------------------------------------------------
 function mostrarVista(nombre) {
-  const viewForm = document.getElementById("view-form");
-  const viewRegistro = document.getElementById("view-registro");
-  const stickyBar = document.getElementById("sticky-bar-form");
+  const vistas = {
+    form: "view-form",
+    registro: "view-registro",
+    diagnosticadores: "view-diagnosticadores",
+  };
+  const barras = {
+    form: "sticky-bar-form",
+    diagnosticadores: "sticky-bar-diagnosticadores",
+  };
 
-  if (nombre === "form") {
-    viewForm.classList.remove("is-hidden");
-    viewRegistro.classList.add("is-hidden");
-    stickyBar.style.display = "flex";
-  } else {
-    viewForm.classList.add("is-hidden");
-    viewRegistro.classList.remove("is-hidden");
-    stickyBar.style.display = "none";
-  }
+  Object.keys(vistas).forEach(function (clave) {
+    document.getElementById(vistas[clave]).classList.toggle("is-hidden", clave !== nombre);
+  });
+  Object.keys(barras).forEach(function (clave) {
+    document.getElementById(barras[clave]).style.display = (clave === nombre) ? "flex" : "none";
+  });
   window.scrollTo({ top: 0 });
 }
 

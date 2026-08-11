@@ -45,7 +45,7 @@ def obtener_catalogos():
         "tipos_pieza": models.TIPOS_PIEZA,
         "fuga_opciones": models.FUGA_OPCIONES,
         "estado_opciones": models.ESTADO_OPCIONES,
-        "supervisores": models.SUPERVISORES,
+        "supervisores": sheets_service.listar_diagnosticadores_tolerante(),
     }
 
 
@@ -224,6 +224,28 @@ def editar(datos: models.EditarInput):
     if not exito:
         raise HTTPException(status_code=404, detail="Diagnóstico no encontrado.")
     return {"ok": True}
+
+
+@app.post("/api/admin/diagnosticadores")
+def guardar_diagnosticadores(datos: models.DiagnosticadoresInput):
+    """
+    Reemplaza la lista de diagnosticadores por la que manda el panel.
+
+    Renombrar acá no toca los diagnósticos ya cargados: conservan el nombre
+    con el que se guardaron.
+    """
+    _requerir_admin(datos.token)
+
+    nombres = [n.strip() for n in datos.nombres if n and n.strip()]
+    if not nombres:
+        raise HTTPException(status_code=422, detail="Debe quedar al menos un diagnosticador.")
+
+    vistos = {n.lower() for n in nombres}
+    if len(vistos) != len(nombres):
+        raise HTTPException(status_code=422, detail="Hay diagnosticadores repetidos en la lista.")
+
+    sheets_service.guardar_diagnosticadores(nombres)
+    return {"ok": True, "nombres": nombres}
 
 
 @app.post("/api/admin/anular")

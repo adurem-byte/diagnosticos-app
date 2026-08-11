@@ -93,6 +93,13 @@ const API = (() => {
       });
     },
 
+    guardarDiagnosticadores(token, nombres) {
+      return _request("/api/admin/diagnosticadores", {
+        method: "POST",
+        body: JSON.stringify({ token, nombres }),
+      });
+    },
+
     adminAnular(token, diagnosticoId, motivo) {
       return _request("/api/admin/anular", {
         method: "POST",
