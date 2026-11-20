@@ -23,6 +23,8 @@ DIAGNOSTICOS_DISPONIBLES = [
     "PSU AND CONTROL BOARD",
     "UNKNOW",
     "LEAKEGE",
+    "CORROSION",
+    "SEDIMENTS",
 ]
 
 # Campos base que existen siempre (independiente del diagnóstico)
@@ -117,6 +119,11 @@ REGLAS_POR_DIAGNOSTICO = {
         "SUPERVISOR": OBLIGATORIO, "OBSERVACION": OPCIONAL,
     },
 }
+
+
+# Nuevos tipos de falla: mismas reglas que UNKNOW
+for _nuevo in ("CORROSION", "SEDIMENTS"):
+    REGLAS_POR_DIAGNOSTICO[_nuevo] = dict(REGLAS_POR_DIAGNOSTICO["UNKNOW"])
 
 
 def obtener_reglas(diagnostico: str) -> dict:
